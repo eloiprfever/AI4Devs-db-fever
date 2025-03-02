@@ -14,16 +14,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Existing models
 model Candidate {
-  id                Int               @id @default(autoincrement())
-  firstName         String            @db.VarChar(100)
-  lastName          String            @db.VarChar(100)
-  email             String            @unique @db.VarChar(255)
-  phone             String?           @db.VarChar(15)
-  address           String?           @db.VarChar(100)
-  educations        Education[]
-  workExperiences   WorkExperience[]
-  resumes           Resume[]
+  id              Int             @id @default(autoincrement())
+  firstName       String          @db.VarChar(100)
+  lastName        String          @db.VarChar(100)
+  email           String          @unique @db.VarChar(255)
+  phone           String?         @db.VarChar(15)
+  address         String?         @db.VarChar(100)
+  educations      Education[]
+  workExperiences WorkExperience[]
+  resumes         Resume[]
+  applications    Application[]   
+
+  @@index([firstName, lastName]) // Add index for name searches
 }
 
 model Education {
@@ -34,6 +38,9 @@ model Education {
   endDate       DateTime?
   candidateId   Int
   candidate     Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId]) // Add index for foreign key
+  @@index([startDate, endDate]) // Add index for date range queries
 }
 
 model WorkExperience {
@@ -45,6 +52,10 @@ model WorkExperience {
   endDate     DateTime?
   candidateId Int
   candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId]) // Add index for foreign key
+  @@index([company]) // Add index for company searches
+  @@index([startDate, endDate]) // Add index for date range queries
 }
 
 model Resume {
@@ -54,4 +65,145 @@ model Resume {
   uploadDate  DateTime
   candidateId Int
   candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId]) // Add index for foreign key
+  @@index([uploadDate]) // Add index for upload date sorting
+}
+
+// New models based on the ERD
+model Company {
+  id        Int        @id @default(autoincrement())
+  name      String     @db.VarChar(100)
+  employees Employee[]
+  positions Position[]
+
+  @@index([name]) // Add index for company name searches
+}
+
+model Employee {
+  id        Int         @id @default(autoincrement())
+  companyId Int         @map("company_id")
+  name      String      @db.VarChar(100)
+  email     String      @db.VarChar(255)
+  role      String      @db.VarChar(50)
+  isActive  Boolean     @map("is_active") @default(true)
+  company   Company     @relation(fields: [companyId], references: [id])
+  interviews Interview[]
+
+  @@index([companyId]) // Add index for foreign key
+  @@index([email]) // Add index for email searches
+  @@index([isActive]) // Add index for active employee filtering
+  @@index([name]) // Add index for name searches
+}
+
+model Position {
+  id                 Int             @id @default(autoincrement())
+  companyId          Int             @map("company_id")
+  interviewFlowId    Int             @map("interview_flow_id")
+  positionDetailId   Int             @map("position_detail_id")
+  title              String          @db.VarChar(100)
+  status             String          @db.VarChar(50)
+  isVisible          Boolean         @map("is_visible") @default(true)
+  location           String          @db.VarChar(100)
+  salaryMin          Decimal?        @map("salary_min") @db.Decimal(10, 2)
+  salaryMax          Decimal?        @map("salary_max") @db.Decimal(10, 2)
+  employmentType     String          @map("employment_type") @db.VarChar(50)
+  applicationDeadline DateTime?       @map("application_deadline")
+  contactInfo        String?         @map("contact_info") @db.VarChar(255)
+  company            Company         @relation(fields: [companyId], references: [id])
+  interviewFlow      InterviewFlow   @relation(fields: [interviewFlowId], references: [id])
+  positionDetail     PositionDetail  @relation(fields: [positionDetailId], references: [id])
+  applications       Application[]
+
+  @@index([companyId]) // Add index for foreign key
+  @@index([interviewFlowId]) // Add index for foreign key
+  @@index([positionDetailId]) // Add index for foreign key
+  @@index([status, isVisible]) // Add composite index for filtering active positions
+  @@index([location]) // Add index for location searches
+  @@index([applicationDeadline]) // Add index for deadline filtering
+  @@index([employmentType]) // Add index for employment type filtering
+}
+
+model PositionDetail {
+  id                 Int        @id @default(autoincrement())
+  description        String?    @db.Text
+  jobDescription     String?    @map("job_description") @db.Text
+  requirements       String?    @db.Text
+  responsibilities   String?    @db.Text
+  benefits           String?    @db.Text
+  companyDescription String?    @map("company_description") @db.Text
+  positions          Position[]
+
+  // No indexes needed as this table is mainly referenced and not filtered on
+}
+
+model InterviewFlow {
+  id           Int            @id @default(autoincrement())
+  description  String         @db.VarChar(255)
+  interviewSteps InterviewStep[]
+  positions    Position[]
+
+  @@index([description]) // Add index for description searches
+}
+
+model InterviewStep {
+  id              Int           @id @default(autoincrement())
+  interviewFlowId Int           @map("interview_flow_id")
+  interviewTypeId Int           @map("interview_type_id")
+  name            String        @db.VarChar(100)
+  orderIndex      Int           @map("order_index")
+  interviewFlow   InterviewFlow @relation(fields: [interviewFlowId], references: [id])
+  interviewType   InterviewType @relation(fields: [interviewTypeId], references: [id])
+  interviews      Interview[]
+
+  @@index([interviewFlowId]) // Add index for foreign key
+  @@index([interviewTypeId]) // Add index for foreign key
+  @@index([orderIndex]) // Add index for sorting by order
+}
+
+model InterviewType {
+  id           Int            @id @default(autoincrement())
+  name         String         @db.VarChar(100)
+  description  String?        @db.Text
+  interviewSteps InterviewStep[]
+
+  @@index([name]) // Add index for name searches
+}
+
+model Application {
+  id               Int        @id @default(autoincrement())
+  positionId       Int        @map("position_id")
+  candidateId      Int        @map("candidate_id")
+  applicationDate  DateTime   @map("application_date")
+  status           String     @db.VarChar(50)
+  notes            String?    @db.Text
+  position         Position   @relation(fields: [positionId], references: [id])
+  candidate        Candidate  @relation(fields: [candidateId], references: [id])
+  interviews       Interview[]
+
+  @@index([positionId]) // Add index for foreign key
+  @@index([candidateId]) // Add index for foreign key
+  @@index([applicationDate]) // Add index for date sorting
+  @@index([status]) // Add index for status filtering
+}
+
+model Interview {
+  id              Int           @id @default(autoincrement())
+  applicationId   Int           @map("application_id")
+  interviewStepId Int           @map("interview_step_id")
+  employeeId      Int           @map("employee_id")
+  interviewDate   DateTime      @map("interview_date")
+  result          String?       @db.VarChar(50)
+  score           Int?
+  notes           String?       @db.Text
+  application     Application   @relation(fields: [applicationId], references: [id])
+  interviewStep   InterviewStep @relation(fields: [interviewStepId], references: [id])
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+
+  @@index([applicationId]) // Add index for foreign key
+  @@index([interviewStepId]) // Add index for foreign key
+  @@index([employeeId]) // Add index for foreign key
+  @@index([interviewDate]) // Add index for date filtering and sorting
+  @@index([result]) // Add index for result filtering
+  @@index([score]) // Add index for score filtering and sorting
 }
